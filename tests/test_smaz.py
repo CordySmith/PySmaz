@@ -503,7 +503,7 @@ class TestSmaz(TestCase):
 
         print('Testing length %d' % n)
         count = 0
-        all_combinations = itertools.combinations_with_replacement((chr(i + 48) for i in xrange(n)), n)
+        all_combinations = itertools.combinations_with_replacement((chr(i+48) for i in xrange(n)), n)
         for ccomb in all_combinations:
             count += 1
             comb = "".join(ccomb)
@@ -541,9 +541,9 @@ class TestSmaz(TestCase):
         llen = 0
         try:
             for llen in xrange(startat, textstringlen):
-                starting_range = xrange(0, textstringlen - llen) if vary_startingpos else (0,)
+                starting_range = xrange(0, textstringlen-llen) if vary_startingpos else (0,)
                 for startpos in starting_range:
-                    teststring = testtext[startpos:startpos + llen]
+                    teststring = testtext[startpos:startpos+llen]
                     self.assert_smaz_optimal(teststring)
             self.assertTrue(False)  # Should never reach here unless something has gone very wrong
         except AssertionError as e:
