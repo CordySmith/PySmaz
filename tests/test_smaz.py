@@ -15,7 +15,6 @@ import random
 
 from lib.smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, make_tree, SMAZ_TREE
 
-
 __author__ = "Max Smith"
 
 try:
