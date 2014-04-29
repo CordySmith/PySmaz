@@ -69,18 +69,20 @@ Compression varies but a reduction to 60% of the original size is pretty typical
 
    COMPRESSION RESULTS
    -------------------
-                      Original SMAZ (b'track)    bz2    zlib SMAZ-classic SMAZ-classic-path *
-   NUS SMS Messages    2666533       1851173 4106666 2667754      1876762           1864025
-   alice29.txt          148481         91958   43102   53408        92405
-   asyoulik.txt         125179         83762   39569   48778        84707
-   cp.html               24603         19210    7624    7940        19413
-   fields.c              11150          9511    3039    3115        10281
-   grammar.lsp            3721          3284    1283    1222         3547
-   lcet10.txt           419235        252085  107648  142604       254131
-   plrabn12.txt         471162        283407  145545  193162       283515
-   ACT corpus (concat) 4802130       3349766 1096139 1556366      3450138
-   Leeds URL corpus    4629439       3454264 7246436 5011830      3528446           3527606
-* Pathological case detection
+                      Original   SMAZ*      bz2    zlib SMAZc **  SMAZcp ***
+   NUS SMS Messages    2666533 1851173  4106666 2667754  1876762     1864025
+   alice29.txt          148481   91958    43102   53408    92405
+   asyoulik.txt         125179   83762    39569   48778    84707
+   cp.html               24603   19210     7624    7940    19413
+   fields.c              11150    9511     3039    3115    10281
+   grammar.lsp            3721    3284     1283    1222     3547
+   lcet10.txt           419235  252085   107648  142604   254131
+   plrabn12.txt         471162  283407   145545  193162   283515
+   ACT corpus (concat) 4802130 3349766  1096139 1556366  3450138
+   Leeds URL corpus    4629439 3454264  7246436 5011830  3528446     3527606
+* SMAZ with back-tracking
+** SMAZ classic (original algorithm)
+*** SMAZ classic with pathological case detection
 
 If you have a use-case where you need to keep an enormous amount of small (separate) strings that isn't going to be limited by PySmaz's throughput, then congratulations !
 
