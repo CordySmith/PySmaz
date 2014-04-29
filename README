@@ -5,6 +5,7 @@ Python port by Max Smith
 BSD license per original C implementation at https://github.com/antirez/smaz
 
 Except for text samples which are in the public domain and from:
+
  The ACT Corpus
  --------------
   http://compression.ca/act/act-files.html
@@ -51,7 +52,7 @@ How should you use it ?
 SMAZ works best on small ASCII English strings up to about 100 bytes. Beyond that length it is outperformed by entropy coders (bz2,zlib). Its throughput on small strings is approximately equal to bz2 and zlib, due to the high fixed cost
 per call to the codec.
 
-   STRINGS 1 to 8 bytes
+   STRINGS 1 to 8 BYTES
    --------------------
                      SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
    Comp   throughput  0.5 mb/s       4.0 mb/s     0.2 mb/s     0.43 mb/s
@@ -59,13 +60,13 @@ per call to the codec.
 
 On larger strings the relative advantages drop away, and the entropy coders are a better bet. Interestingly SMAZ isn't too far off bz2... but zlib crushes it.
 
-   5 MEGABYTE STRING
-   -----------------
+   5 MEGABYTE STRINGS
+   ------------------
                      SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
-   Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s      74.0 mb/s
-   Decomp throughput  3.6 mb/s      16.5 mb/s    30.3 mb/s     454.6 mb/s
+   Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s     74.0 mb/s
+   Decomp throughput  3.6 mb/s      16.5 mb/s    30.3 mb/s    454.6 mb/s
 
-Compression varies but a reduction to 60% of the original size is pretty typical. Here are some results from some common text compression corpuses, the text messages and the urls individually encoded are pretty strong. Everything else is ire.
+Compression varies but a reduction to 60% of the original size is pretty typical. Here are some results from some common text compression corpuses, the text messages and the urls individually encoded are pretty strong. Everything else is dire.
 
    COMPRESSION RESULTS
    -------------------
