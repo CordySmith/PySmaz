@@ -7,6 +7,28 @@ Smaz by Salvatore Sanfilippo
 
 BSD license per original C implementation at https://github.com/antirez/smaz
 
+Except for text samples which are in the public domain and from:
+ The ACT Corpus
+ --------------
+  http://compression.ca/act/act-files.html
+  Jeff Gilchrist
+
+ The Canterbury Corpus
+ ---------------------
+  http://corpus.canterbury.ac.nz/
+  Maintained by: Dr. Tim Bell, Matt Powell, Joffre Horlor, Ross Arnold
+
+ NUS SMS Corpus
+ --------------
+   http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
+   Tao Chen and Min-Yen Kan (2012). Creating a Live, Public Short Message Service Corpus: The NUS SMS Corpus.
+   Language Resources and Evaluation. Aug 2012. [doi:10.1007/s10579-012-9197-9]
+
+ Leeds Collection of Internet Corpora
+ ------------------------------------
+  http://corpus.leeds.ac.uk/internet.html
+  Serge Sharoff
+
 USAGE
 -----
 
@@ -18,10 +40,10 @@ A FEW NOTES ON THE PYTHON PORT
 ------------------------------
 
 PySmaz is Python 2.x, 3.x and PyPy compatible. I've tested with the latest versions, if you do find an issue with an
-earlier version, please let me know, and address it.
+earlier version, please let me know, and I'll address it.
 
 The original C implementation used a table approach, along with some hashing to select the right entry. My first attempt
- used the original C-style approach and barely hit 170k/sec on Cython and a i7.
+ used the original C-style approach and barely hit 170k/sec on CPython and a i7.
 
 The tree based approach gets closer to one megabyte per second on the same setup. The difference is performance is
 largely due to the inner loop not always checking 7 characters per character - i.e. O(7n) vs O(n). I've tried to balance
@@ -30,42 +52,61 @@ readability with performance, hopefully it's clear what's going on.
 Decompression performance is limited by the single byte approach, and reaches 3.7 megabytes per second. To squeeze
 more performance it might be worth considering a multi-byte table for decoding.
 
-After eliminating the O(n^2) string appends, PyPy performance is much good:
-   Compression throughput is 1.5 megabytes per second (1.5x)
-   Decompression throughput is 22 megabytes per second (7x)
+After eliminating the O(n^2) string appends, PyPy performance is very impressive.
 
 How should you use it ?
 
-Well - there's the rub: In pure python form is probably too slow to be universally useful, until PyPy can get much
-faster anyway. Interestingly smaz isn't too far off bz2... but zlib crushes it.
+SMAZ works best on small ASCII English strings up to about 100 bytes. Beyond that length it is outperformed by entropy
+coders (bz2,zlib). Its throughput on small strings is approximately equal to bz2 and zlib, due to the high fixed cost
+per call to the codec.
 
-                    smaz (Cython) smaz(PyPy)         bz2          zlib
- Comp   throughput  1.0 mb/s       1.5 mb/s     2.0 mb/s    74.07 mb/s
- Decomp throughput  3.7 mb/s      22.0 mb/s   30.39 mb/s   454.55 mb/s
+   STRINGS 1 to 8 bytes
+   --------------------
+                     SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
+   Comp   throughput  0.5 mb/s       4.0 mb/s     0.2 mb/s     0.43 mb/s
+   Decomp throughput  1.4 mb/s      14.0 mb/s     0.5 mb/s      2.6 mb/s
 
-If you have a use-case where you need to keep an enormous amount of small strings that isn't going to be limited by
-PySmaz's limited throughput, then congratulations !
+On larger strings the relative advantages drop away, and the entropy coders are a better bet. Interestingly SMAZ isn't
+too far off bz2... but zlib crushes it.
 
-The unit tests explore its performance against a series of common compressible strings. You'll notice it does very well
-against bz2 and zlib on English text, URLs and paths. In the Moby Dick sample SMAZ is best out to 54 characters (see
-unit test) and is often number one on larger samples out to hundreds of bytes. The first paragraph of Moby Dick as an
-example, SMAZ leads until 914 bytes of text have passed !
+   5 MEGABYTE STRING
+   -----------------
+                     SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
+   Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s      74.0 mb/s
+   Decomp throughput  3.6 mb/s      16.5 mb/s    30.3 mb/s     454.6 mb/s
 
-On non-English strings (numbers, symbols, nonsense) it still does better with everything under 9 bytes (see unit test)
+Compression varies but a reduction to 60% of the original size is pretty typical. Here are some results from some common
+text compression corpuses, the text messages and the urls individually encoded are pretty strong. Everything else is
+dire.
+
+   COMPRESSION RESULTS
+   -------------------
+                      Original    SMAZ (b'track)       bz2        zlib  SMAZ-classic SMAZ-classic pathological
+   NUS SMS Messages    2666533          1851173    4106666     2667754       1876762                   1864025
+   alice29.txt          148481            91958      43102       53408         92405
+   asyoulik.txt         125179            83762      39569       48778         84707
+   cp.html               24603            19210       7624        7940         19413
+   fields.c              11150             9511       3039        3115         10281
+   grammar.lsp            3721             3284       1283        1222          3547
+   lcet10.txt           419235           252085     107648      142604        254131
+   plrabn12.txt         471162           283407     145545      193162        283515
+   ACT corpus (concat) 4802130          3349766    1096139     1556366       3450138
+   Leeds URL corpus    4629439          3454264    7246436     5011830       3528446                   3527606
+
+If you have a use-case where you need to keep an enormous amount of small (separate) strings that isn't going to be
+limited by PySmaz's throughput, then congratulations !
+
+The unit tests explore PySmaz's performance against a series of common compressible strings. You'll notice it does very
+well against bz2 and zlib on English text, URLs and paths. In the Moby Dick sample SMAZ is best out to 54 characters
+(see unit test) and is often number one on larger samples out to hundreds of bytes. The first paragraph of Moby Dick as
+an example, SMAZ leads until 914 bytes of text have passed !
+
+On non-English strings (numbers, symbols, nonsense) it still does better with everything under 10 bytes (see unit test)
 And ignoring big wins for zlib like repeating sub-strings, out to 20 bytes it is dominant. This is mostly thanks to the
-pathological case detection in the compress routine.
+pathological case detection and backtracking in the compress routine.
 
-POSSIBLE ENHANCEMENTS TO THE ALGORITHM
---------------------------------------
-There are a few things left on the table as far as improving the compression of the algorithm, we can squeeze an extra
-char into the '255' block, and despite being only for ascii text the uncompressed runs waste a bit per character.
-
-If we assume that we only ever encode ASCII, then instead of encoding the length of the string in the second byte after
-a 255, we could encode as much ASCII content as we like, followed by a 255, additionally the other 126 non-ascii values
-could be used as a secondary dictionary values.
-
-To increased relative domain effectiveness it might make sense to replace the single character 254 encoding with a
-secondary dictionary lookup. Using this effectively would require greater encoding complexity and would thus be slower.
+Backtracking buys modest improvements to larger strings (1%) and deals with pathological sub-strings, again - you are
+better off using zlib for strings longer than 100 bytes in most cases.
 
 BACKGROUND
 ----------
@@ -124,7 +165,7 @@ From the original description:
     information
 """
 
-__author__ = "Max Smith and Salvatore Sanfilippo"
+__author__ = "Salvatore Sanfilippo and Max Smith"
 __copyright__ = "Copyright 2006-2014 Max Smith, Salvatore Sanfilippo"
 __credits__ = ["Max Smith", "Salvatore Sanfilippo"]
 __license__ = """
@@ -155,6 +196,7 @@ __version__ = "1.0.0"
 __maintainer__ = "Max Smith"
 __email__ = None  # Sorry, I get far too much spam as it is. Track me down at http://www.notonbluray.com
 
+BACKTRACK_LIMIT = 254  # No point backtracking more than 255 characters
 
 def make_tree(decode_table):
     """ Create a tree representing the encoding strategy implied by the passed table.
@@ -269,6 +311,7 @@ def _check_ascii(sstr):
     """ Return True iff the passed string contains only ascii chars """
     return all(ord(ch) < 128 for ch in sstr)
 
+
 def _encapsulate(input_str):
     """ There are some pathological cases, where it may be better to just encapsulate the string in 255 code chunks
     """
@@ -284,21 +327,66 @@ def _encapsulate(input_str):
                 output.append(chunk)
         return "".join(output)
 
+def _encapsulate_list(input_list):
+    """ There are some pathological cases, where it may be better to just encapsulate the string in 255 code chunks
+    """
+    if not input_list:
+        return input_list
+    else:
+        output = []
+        for chunk in (input_list[i:i+255] for i in range(0, len(input_list), 255)):
+            if 1 == len(chunk):
+                output.append(chr(254))
+                output.extend(chunk)
+            else:
+                output.extend((chr(255), chr(len(chunk) - 1)))
+                output.extend(chunk)
+        return output
 
-def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=None):
+
+def _worst_size(str_len):
+    """ Given a string length, what's the worst size that we should grow to """
+    if str_len == 0:
+        return 0
+    elif str_len == 1:
+        return 2
+    elif str_len % 255 in (0, 1):
+        return (str_len / 255) * 2 + str_len + (str_len % 255)
+    else:
+        return ((str_len / 255) + 1) * 2 + str_len
+
+
+def compress_no_backtracking(input_str):
+    """ As ccmpress, but with backtracking and pathological case detection, and ascii checking disabled """
+    return compress(input_str, check_ascii=False, backtracking=False, pathological_case_detection=False)
+
+
+def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=None, backtracking=True,
+             pathological_case_detection=True, backtrack_limit=BACKTRACK_LIMIT):
     """ Compress the passed string using the SMAZ algorithm. Returns the encoded string. Performance is a O(N), but the
         constant will vary depending on the relationship between the compression tree and input_str, in particular the
         average depth explored/average characters per encoded symbol.
 
+
     :param input_str The ASCII str to be compressed
     :param check_ascii Check the input_str is ASCII before we encode it (default True)
     :param raise_on_error Throw a value type exception (default True)
-    :param compression_tree: A tree represented as a dict of ascii->char to tuple( encoded_byte, dict( ... ) ), that
+    :param compression_tree: A tree represented as a dict of ascii char to tuple( encoded_byte, dict( ... ) ), that
                              describes how to compress content. By default uses built in SMAZ tree. See also make_tree
+    :param backtracking: Enable checking for poor performance of the standard algorithm, some performance impact
+                             True = better compression (1% on average), False = Higher throughput
+    :param pathological_case_detection: A lighter version of backtracking to catch output growth beyond the
+                             simple worst case handling of encapsulation. You probably want this enabled.
+    :param backtrack_limit: How many characters to look backwards for backtracking, defaults to 255 - setting it higher
+                            may achieve slightly higher compression ratios (0.1% on big strings) at the expense of much
+                            worse performance, particularly on random data. You probably want this left as default
+
     :type input_str: str
     :type check_ascii: bool
     :type raise_on_error: bool
     :type compression_tree: dict
+    :type backtracking: bool
+    :type pathological_case_detection: bool
 
     :rtype: str
     :return: The compressed input_str
@@ -312,24 +400,116 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
             else:
                 return None
 
+        # Invariants:
         terminal_tree_node = (None, None)
         compression_tree = compression_tree or SMAZ_TREE
-
         input_str_len = len(input_str)
 
-        output = []
-        unmatched = []
-        pos = 0
+        # Invariant: All of these arrays assume len(array) = number of bytes in array
+        output = []          # Single bytes. Committed, non-back-track-able output
+        unmatched = []       # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
+        backtrack_buff = []  # Single bytes. Encoded between last_backtrack_pos and pos (excl enc_buf and unmatched)
+        enc_buf = []         # Single bytes. Encoded output for the current run of compression codes
+        last_backtrack_pos = pos = 0
         while pos < input_str_len:
             tree_ptr = compression_tree
             enc_byte = None
-            enc_len = 0
             j = 0
-            while j < input_str_len - pos:
+            while j < input_str_len - pos:  # Search the tree for the longest matching sequence
                 byte_val, tree_ptr = tree_ptr.get(input_str[pos + j], terminal_tree_node)
                 j += 1
                 if byte_val is not None:
-                    enc_byte = byte_val
+                    enc_byte = byte_val  # Remember this match, and search for a longer one
+                    enc_len = j
+                if not tree_ptr:
+                    break  # No more matching characters in the tree
+
+            if enc_byte is None:
+                unmatched.append(input_str[pos])
+                pos += 1  # We didn't match any stems, add the character the unmatched list
+
+                # Backtracking - sometimes it makes sense to go back and not use a length one symbol between two runs of
+                # raw text, since the cost of the context switch is 2 bytes. The following code looks backwards and
+                # tries to judge if the mode switches left us better or worse off. If worse off, re-encode the text as
+                # a raw text run.
+                if len(enc_buf) > 0 or input_str_len == pos:
+                    # Mode switch ! or end of string
+                    merge_len = _worst_size(pos - last_backtrack_pos)
+                    unmerge_len = len(backtrack_buff) + len(enc_buf) + _worst_size(len(unmatched))
+                    if merge_len > unmerge_len + 2 or pos - last_backtrack_pos > backtrack_limit or not backtracking:
+                        # Unmerge: gained at least 3 bytes through encoding, reset the backtrack marker to here
+                        output.extend(backtrack_buff)
+                        output.extend(enc_buf)
+                        backtrack_buff = []
+                        last_backtrack_pos = pos - 1
+                    elif merge_len < unmerge_len:
+                        # Merge: Mode switch doesn't make sense, don't move backtrack marker
+                        backtrack_buff = []
+                        unmatched = list(input_str[last_backtrack_pos:pos])
+                    else:
+                        # Gains are two bytes or less - don't move the backtrack marker till we have a clear gain
+                        backtrack_buff.extend(enc_buf)
+                        if input_str_len == pos:
+                            backtrack_buff.extend(_encapsulate_list(unmatched))
+                            unmatched = []
+                    enc_buf = []
+            else:
+                pos += enc_len  # We did match in the tree, advance along, by the number of bytes matched
+                enc_buf.append(enc_byte)
+                if unmatched:  # Entering an encoding run
+                        backtrack_buff.extend(_encapsulate_list(unmatched))
+                        unmatched = []
+
+        output.extend(backtrack_buff)
+        output.extend(_encapsulate_list(unmatched))
+        output.extend(enc_buf)
+
+        # This may look a bit clunky, but it is worth 20% in cPython and O(n^2) -> O(n) in PyPy
+        output = "".join(output)
+
+        # Pathological case detection - Did we grow more than we would by encapsulating the string ?
+        # There are some cases where backtracking doesn't work correctly, examples:
+        # Y OF
+        if pathological_case_detection:
+            worst = _worst_size(input_str_len)
+            if len(output) > worst:
+                return _encapsulate(input_str)
+        return output
+
+
+def compress_classic(input_str, pathological_case_detection=True):
+    """ A tree version of the original SMAZ compressor, should give identical output to C version.
+        Faster on typical material, but can be tripped up by pathological cases.
+        :type input_str: str
+        :type pathological_case_detection: bool
+
+        :param input_str The string to be compressed
+        :param pathological_case_detection Look for growth beyond the worst case of encapsulation and encapsulate
+               default is True, you probably want this enabled.
+
+        :rtype: str
+        :return: The compressed input_str
+        """
+    if not input_str:
+        return input_str
+    else:
+        # Invariants:
+        terminal_tree_node = (None, None)
+        input_str_len = len(input_str)
+
+        # Invariant: All of these arrays assume len(array) = number of bytes in array
+        output = []          # Single bytes. Committed, non-back-track-able output
+        unmatched = []       # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
+        pos = 0
+        while pos < input_str_len:
+            tree_ptr = SMAZ_TREE
+            enc_byte = None
+            j = 0
+            while j < input_str_len - pos:  # Search the tree for the longest matching sequence
+                byte_val, tree_ptr = tree_ptr.get(input_str[pos + j], terminal_tree_node)
+                j += 1
+                if byte_val is not None:
+                    enc_byte = byte_val  # Remember this match, and search for a longer one
                     enc_len = j
                 if not tree_ptr:
                     break  # No more matching characters in the tree
@@ -338,36 +518,33 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
                 unmatched.append(input_str[pos])
                 pos += 1  # We didn't match any stems, add the character the unmatched list
             else:
-                pos += enc_len  # We did match, advance along, by the number of bytes encoded
+                pos += enc_len  # We did match in the tree, advance along, by the number of bytes matched
+                if unmatched:  # Entering an encoding run
+                    output.extend(_encapsulate_list(unmatched))
+                    unmatched = []
+                output.append(enc_byte)
+        if unmatched:
+            output.extend(_encapsulate_list(unmatched))
 
-            # Flush any unmatched if we are at the end of the string, buffer is full or, we just encoded a byte
-            if unmatched and (input_str_len - pos == 0 or len(unmatched) == 255 or enc_byte is not None):
-                if 1 == len(unmatched):
-                    output.append(chr(254) + unmatched[0])
-                else:
-                    output.append(chr(255) + chr(len(unmatched) - 1))
-                    output.extend(unmatched)
-                unmatched = []
-
-            if enc_byte:
-                output.append(enc_byte)  # Emit the code we found in the tree
-
-        # This may look a bit clunky, but it is worth 20% in cPython and O(n^2) -> O(n) in PyPy
-        output = "".join(output)
-
-        # Pathological case detection
-        if len(output) > len(input_str) * 1.00390625:  # Did we grow more than we would by encapsulating the string ?
+        if pathological_case_detection and len(output) > _worst_size(input_str_len):
             return _encapsulate(input_str)
+        else:
+            return "".join(output)
 
-        return output
 
-
-def decompress(input_str, raise_on_error=True, strict_checking=False, decompress_table=None):
+def decompress(input_str, raise_on_error=True, check_ascii=False, decompress_table=None):
     """ Returns decoded text from the input_str using the SMAZ algorithm by default
-    :type input_str: str
-    :type raise_on_error: bool
-    :type strict_checking: bool
-    :type decompress_table: list
+        :type input_str: str
+        :type raise_on_error: bool
+        :type check_ascii: bool
+        :type decompress_table: list
+
+        :param raise_on_error Throw an exception on any kind of decode error, if false, return None on error
+        :param check_ascii Check that all output is ASCII. Will raise or return None depending on raise_on_error
+        :param decompress_table Alternative 253 entry decode table, by default uses SMAZ
+
+        :rtype: str
+        :return: The decompressed input_str
     """
     if not input_str:
         return input_str
@@ -391,16 +568,15 @@ def decompress(input_str, raise_on_error=True, strict_checking=False, decompress
                         output.append(next_byte)
                     else:  # 255 == ch:
                         # Verbatim string
-                        len_str = ord(next_byte) + 1
-                        end_pos = pos + len_str
-                        if strict_checking and end_pos > input_str_len:
-                            raise ValueError('Invalid input to SMAZ decompress - buffer overflow')
+                        end_pos = pos + ord(next_byte) + 1
+                        if end_pos > input_str_len:
+                            raise ValueError('Invalid input to decompress - buffer overflow')
                         output.append(input_str[pos:end_pos])
                         pos = end_pos
             # This may look a bit clunky, but it is worth 20% in cPython and O(n^2)->O(n) in PyPy
             output = "".join(output)
-            if strict_checking and not _check_ascii(output):
-                raise ValueError('Invalid input to SMAZ decompress - non-ascii byte payload')
+            if check_ascii and not _check_ascii(output):
+                raise ValueError('Invalid input to decompress - non-ascii byte payload')
         except (IndexError, ValueError) as e:
             if raise_on_error:
                 raise ValueError(str(e))
