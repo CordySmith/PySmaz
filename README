@@ -49,8 +49,9 @@ After eliminating the O(n^2) string appends, PyPy performance is very impressive
 
 How should you use it ?
 
-SMAZ works best on small ASCII English strings up to about 100 bytes. Beyond that length it is outperformed by entropy coders (bz2,zlib). Its throughput on small strings is approximately equal to bz2 and zlib, due to the high fixed cost
-per call to the codec.
+SMAZ works best on small ASCII English strings up to about 100 bytes. Beyond that length it is outperformed by entropy coders (bz2,zlib).
+
+SMAZ Throughput on small strings is approximately equal to bz2 and zlib, due to the high setup cost per call to the entropy coders.
 
    STRINGS 1 to 8 BYTES
    --------------------
