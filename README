@@ -1,41 +1,40 @@
-PySmaz a Python port of the SMAZ short string text compression library.
+======
+PySmaz
+======
+
+PySmaz is a Python port of the SMAZ short string text compression library.
 Smaz by Salvatore Sanfilippo
 Python port by Max Smith
 
 BSD license per original C implementation at https://github.com/antirez/smaz
-
 Except for text samples which are in the public domain and from:
 
- The ACT Corpus
- --------------
+* The ACT Corpus
   http://compression.ca/act/act-files.html
   Jeff Gilchrist
 
- The Canterbury Corpus
- ---------------------
+* The Canterbury Corpus
   http://corpus.canterbury.ac.nz/
   Maintained by: Dr. Tim Bell, Matt Powell, Joffre Horlor, Ross Arnold
 
- NUS SMS Corpus
- --------------
+*  NUS SMS Corpus
    http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
    Tao Chen and Min-Yen Kan (2012). Creating a Live, Public Short Message Service Corpus: The NUS SMS Corpus.
    Language Resources and Evaluation. Aug 2012. [doi:10.1007/s10579-012-9197-9]
 
- Leeds Collection of Internet Corpora
- ------------------------------------
+* Leeds Collection of Internet Corpora
   http://corpus.leeds.ac.uk/internet.html
   Serge Sharoff
 
-USAGE
------
+Usage
+=====
 
 from lib.smaz import compress, decompress
 compressedData = compress('Hello World!')
 decompressedData = decompress(compressedData)
 
-A FEW NOTES ON THE PYTHON PORT
-------------------------------
+A Few Notes on the Python Port
+==============================
 
 PySmaz is Python 2.x, 3.x and PyPy compatible. I've tested with the latest versions, if you do find an issue with an earlier version, please let me know, and I'll address it.
 
@@ -82,9 +81,9 @@ Compression varies but a reduction to 60% of the original size is pretty typical
    plrabn12.txt         471162  283407   145545  193162   283515
    ACT corpus (concat) 4802130 3349766  1096139 1556366  3450138
    Leeds URL corpus    4629439 3454264  7246436 5011830  3528446     3527606
-* SMAZ with back-tracking
-** SMAZ classic (original algorithm)
-*** SMAZ classic with pathological case detection
+   * SMAZ with back-tracking
+   ** SMAZ classic (original algorithm)
+   *** SMAZ classic with pathological case detection
 
 If you have a use-case where you need to keep an enormous amount of small (separate) strings that isn't going to be limited by PySmaz's throughput, then congratulations !
 
@@ -94,10 +93,10 @@ On non-English strings (numbers, symbols, nonsense) it still does better with ev
 
 Backtracking buys modest improvements to larger strings (1%) and deals with pathological sub-strings, again - you are better off using zlib for strings longer than 100 bytes in most cases.
 
-BACKGROUND
-----------
+Background
+==========
 
-From the original description:
+From the original description::
 
     SMAZ - compression for very small strings
     -----------------------------------------
