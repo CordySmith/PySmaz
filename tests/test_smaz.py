@@ -13,7 +13,7 @@ import datetime
 import itertools
 import random
 
-from lib.smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, make_tree, SMAZ_TREE, _worst_size, \
+from lib.smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, make_trie, SMAZ_TREE, _worst_size, \
     _encapsulate_list, compress_no_backtracking, compress_classic
 
 
@@ -253,6 +253,7 @@ TEST_DATA_LIST = (
     "http://programming.reddit.com",
     "http://github.com/antirez/smaz/tree/master",
     "/media/hdb1/music/Alben/The Bla",
+    "Wikipedia is a free, web-based, collaborative, multilingual encyclopedia project.",
     '\n',
     None,
     '',
@@ -314,15 +315,18 @@ TEST_DATA_LIST = (
 
 
 def heavytest(test_func):
-    '''Tag tests that take too long to run for quick regression'''
+    """Tag tests that take too long to run for quick regression"""
+
     def heavytest_deco(self):
         if RUN_HEAVY_TESTS:
             test_func(self)
         else:
             print('Skipping @heavytest %s' % test_func.__name__)
+
     return heavytest_deco
 
-class TestSmaz(TestCase):
+
+class TestSmazBase(TestCase):
     def timedelta_to_float(self, td):
         """ Return a floating point value in seconds for the timedelta """
         return float(td.seconds) + float(td.microseconds) / 1000000.
@@ -375,182 +379,6 @@ class TestSmaz(TestCase):
         self.assertEqual(input_str, backtracked_decompressed_text)
         self.assertEqual(input_str, classic_decompressed_test)
 
-    def test_backtracking(self):
-        """ These are torture tests for the back tracking logic, in particular off by one type errors """
-        self.cycle('1000 numbers 2000 will 10 20 30 compress very little')
-        self.cycle('1000 numbers 2000 will 102030 compress very little')
-        self.cycle('GRAND CONTESTED ELECTION FOR THE PRESIDENCY OF THE UNITED STATES.')
-        self.cycle('t@')
-        self.cycle(('@' * 200 + ' ') * 10)
-        self.cycle(('@' * 200 + '  ') * 10)
-        self.cycle(('@' * 200 + '   ') * 10)
-        self.cycle(('@' * 200 + '   @') * 10)
-        self.cycle((('@' * 200 + '   ') * 10) + ' @')
-        self.cycle((('@' * 200 + '   ') * 10) + ' @ @')
-        self.cycle((('@' * 200 + '   ') * 10) + ' @ @ @')
-        self.cycle('not-a-g00d-Exampl333')
-        self.cycle("p<7l")
-        self.cycle(" !p")
-        self.cycle('7nqd')
-        self.cycle('#e]4z')
-        self.cycle(" *A'Rt")
-
-
-    def test_worstsize(self):
-        testcases = ['@' * i for i in xrange(0, 5000)]
-        for test in testcases:
-            self.assertEqual(len(_encapsulate(test)), _worst_size(len(test)))
-            self.assertEqual(test, decompress(_encapsulate(test)))  # Sanity checks
-            self.assertEqual(test, decompress("".join(_encapsulate_list(list(test)))))
-
-    def test_compress(self):
-        """ A series of basic tests, asserting that the string isn't a mess """
-        methods = (
-            (None, None),  # i.e. SMAZ
-        )
-
-        for tree, table in methods:
-            for test in TEST_DATA_LIST:
-                self.cycle(test, compress_tree=tree, decompress_table=table)
-
-    def test_encapsulate(self):
-        """ Test the encapsulation method """
-        for test in TEST_DATA_LIST:
-            self.assertEqual(test, decompress(_encapsulate(test)))
-            if test:
-                self.assertEqual(test, decompress("".join(_encapsulate_list(list(test)))))
-
-    def test_expected_compression_results(self):
-        """ This test asserts some expected behavior in terms out compressed output, if you change the compression
-            algorithm (or decoding table) this will change. """
-        self.assertEqual(len(compress('thethethe')), 3)
-        self.assertEqual(len(compress('thewhich')), 2)
-        self.assertEqual(len(compress('123thewhich123')), 12)
-        self.assertEqual(len(compress('not-a-g00d-Exampl333')), 20)
-
-    def test_mobydick(self):
-        """ Test the first paragraph, and the full first chapter. """
-        self.cycle(MOBYDICK_PARAGRAPH1)
-        self.cycle(MOBYDICK_CHAPTER1)
-
-    @heavytest
-    def test_scaling(self):
-        """ Test (but don't assert) that SMAZ scales linearly with string length - i.e. O(N) """
-        print('factor should remain roughly constant if performance is O(N)')
-        for i in (1, 5, 10, 20, 50, 100, 250, 500, 1000, 2500, 10000, 100000):
-            runs = 1
-            if i < 10000:
-                runs = 100
-                if i < 500:
-                    runs = 1000
-
-            tick = datetime.datetime.now()
-            cdata = [compress(FIVE_MEGABYTES_OF_MOBY_DICK[0:i]) for _ in xrange(runs)]
-            tock = datetime.datetime.now()
-            tdf = self.timedelta_to_float(tock - tick)
-            print('%i, %f, factor: %.10f - %d' % (i, tdf, tdf / (float(i) * float(runs)), len(cdata)))
-
-    def test_onlycompressable(self):
-        self.cycle("".join(DECODE))  # All the perfectly compressible words
-
-    @heavytest
-    def test_randomtext(self):
-        """ Test a large block of random text (1mb), then walk through it testing sub-strings of
-        length 1 to 64 characters. Basically fuzzing the compression algo, found a couple of interesting
-        bugs here around backtracking here."""
-        ascii_chars = [chr(i) for i in xrange(127)]
-        offset_range = 1024
-        mega = 2 ** 20
-        randomtext = "".join(random.choice(ascii_chars) for _ in xrange(mega + offset_range))
-
-        try:
-            ## Test a megabyte of random text
-            test_string = randomtext
-            self.cycle(randomtext, quiet=True)
-
-            for i in xrange(64):
-                for j in xrange(offset_range):
-                    test_string = randomtext[j:j + i]
-                    self.cycle(test_string, quiet=True)
-        except ValueError as e:
-            print('Broken string:%s' % test_string)
-            print('Error: %s' % str(e))
-            raise
-
-    def test_ascii(self):
-        """ By default, we check we are only processing ascii data"""
-        self.assertRaises(ValueError, compress, chr(129))
-        for i in xrange(127):
-            compress(chr(i))  # Doesn't raise - valid data
-
-    @heavytest
-    def test_random_invalid_input(self):
-        """ Test we don't go off the rails with a large random input """
-        allbytes = [chr(i) for i in xrange(255)]
-        randominput = "".join(random.choice(allbytes) for _ in xrange(10000))  # 10kb of random bytes
-        for i in xrange(2048):
-            decompress(randominput[i:i + 4096], raise_on_error=False)  # Walk through the 4k of the range
-
-    def test_specific_bad_data(self):
-        """ A few implict error/edge cases in the SMAZ algorithm """
-        buffer_overflow = chr(255) + chr(255)  # Buffer overflow - expects 254 bytes, gets 0
-        multibyte_non_ascii = chr(255) + chr(1) + chr(200) + chr(200)  # Non ascii multi-byte payload
-        singlebyte_non_ascii = chr(254) + chr(129)  # Non ascii single-byte payload
-
-        self.assertFalse(_check_ascii(multibyte_non_ascii))
-        self.assertEqual(decompress(buffer_overflow, raise_on_error=False), None)
-        self.assertRaises(ValueError, decompress, buffer_overflow, raise_on_error=True)
-        self.assertEqual(decompress(multibyte_non_ascii), (chr(200) + chr(200)))  # Returns non-ascii data
-        self.assertRaises(ValueError, decompress, multibyte_non_ascii, raise_on_error=True, check_ascii=True)
-        self.assertEqual(decompress(multibyte_non_ascii, raise_on_error=False, check_ascii=True), None)
-        self.assertEqual(decompress(singlebyte_non_ascii), chr(129))  # Returns non-ascii data
-        self.assertRaises(ValueError, decompress, singlebyte_non_ascii, raise_on_error=True, check_ascii=True)
-        self.assertEqual(decompress(singlebyte_non_ascii, raise_on_error=False, check_ascii=True), None)
-
-    def test_ascii_check(self):
-        """ Test the ascii check """
-        self.assertTrue(_check_ascii('1230ABCZADSADW'))
-        self.assertFalse(_check_ascii(chr(129) + chr(129)))
-        self.assertEquals(None, compress(chr(129), raise_on_error=False))
-
-    def test_make_tree(self):
-        """ Test the tree building function. A bit weak """
-        self.assertEqual(make_tree(DECODE), SMAZ_TREE)  # A bit weak
-        self.assertRaises(ValueError, make_tree, None)
-        self.assertRaises(ValueError, make_tree, [])
-        self.assertRaises(ValueError, make_tree, ['b', 'b'])
-        self.assertRaises(ValueError, make_tree, ['%d' % i for i in xrange(257)])
-
-    def test_quick_string_check(self):
-        """ A quick performant sanity check of strings """
-        self.performance_string(MOBYDICK_CHAPTER1, 200, 1, 100, 2)
-
-    @heavytest
-    def test_very_very_small_strings(self):
-        """ Test strings varying in length from 1 to 10 chars from MOBY DICK. All safely inside L1 cache"""
-        self.performance_string(MOBYDICK_CHAPTER1, 20000, 1, 10, 1)
-
-    @heavytest
-    def test_very_small_strings(self):
-        """ Test strings varying in length from 3 to 20 chars from MOBY DICK. All safely inside L1 cache"""
-        self.performance_string(MOBYDICK_CHAPTER1, 10000, 3, 20, 1)
-
-    @heavytest
-    def test_small_strings(self):
-        """ Test strings varying in length from 20 to 100 chars from MOBY DICK. All safely inside L1 cache"""
-        self.performance_string(MOBYDICK_CHAPTER1, 900, 20, 100, 3)
-
-    @heavytest
-    def test_medium_strings(self):
-        """ Test strings of length 100k from MOBY DICK. Blows L1 cache """
-        self.performance_string(FIVE_MEGABYTES_OF_MOBY_DICK, 100, 100000, 100010, 1000)
-
-    @heavytest
-    def test_very_large_string(self):
-        """ This should safely break any cosy L1 and L2 cache dependencies"""
-        self.performance_string(FIVE_MEGABYTES_OF_MOBY_DICK, 1, len(FIVE_MEGABYTES_OF_MOBY_DICK),
-                                len(FIVE_MEGABYTES_OF_MOBY_DICK) + 1, 2)
-
     def performance_string(self, sourcetext, maxdepth, minsize, maxsize, step):
         """ Measure the codec performance on a range of strings from sourcetext, testing at maxdepth places from a
             minimum string size of minsize to a maximum size of maxsize in steps of step.
@@ -575,8 +403,8 @@ class TestSmaz(TestCase):
 
             dc_time = self.timedelta_to_float(end_tick - mid_tock)
             c_time = self.timedelta_to_float(mid_tock - tick)
-            for input, output in zip(test_data, d_data):
-                self.assertEqual(input, output)
+            for iinput, output in zip(test_data, d_data):
+                self.assertEqual(iinput, output)
 
             c_throughput = total_len / c_time
             dc_throughput = total_len / dc_time
@@ -642,12 +470,6 @@ class TestSmaz(TestCase):
 
         print('Tested %d combinations, SMAZ is optimal for length %d' % (count, n))
 
-    @heavytest
-    def test_prove_optimal(self):
-        """ Prove that SMAZ is optimal (vs bz2 and zlib) for very small strings """
-        for i in xrange(1, 10):
-            self.prove_optimal_for_string_length(i)
-
     def find_shortest_substring_in_where_smaz_is_not_best(self, testtext, startat=0, vary_startingpos=True,
                                                           display_string=True):
         """ Find the first shortest substring in chapter one of mobydick where SMAZ is not the best compressor (or
@@ -667,62 +489,10 @@ class TestSmaz(TestCase):
                 print('Shortest string that SMAZ is sub-optimal for %d' % llen)
             print(str(e))
 
-    @heavytest
-    def test_find_shortest_substring_in_mobydick_where_smaz_breaks(self):
-        if RUN_HEAVY_TESTS:
-            print('Checking first chapter of Moby Dick')
-            self.find_shortest_substring_in_where_smaz_is_not_best(MOBYDICK_CHAPTER1)
-            print('Checking first paragraph of Moby Dick')
-            self.find_shortest_substring_in_where_smaz_is_not_best(MOBYDICK_PARAGRAPH1, startat=700,
-                                                                   vary_startingpos=False)
-
-
-    def test_the_canterbury_corpus(self):
-        """ Exercise the ascii bits of the Canterbury Corpus - the lisp file is interesting. """
-        test_files = ('alice29.txt', 'asyoulik.txt', 'cp.html', 'fields.c', 'grammar.lsp', 'lcet10.txt', 'plrabn12.txt')
-        for test_file in test_files:
-            with open('data/%s' % test_file,'r') as f:
-                test_text = f.read()
-                print('-------Starting Canterbury Corpus file: %s ----------------' % test_file)
-                self.cycle(test_text, show_input_and_output=False, strict=False)
-                self.find_shortest_substring_in_where_smaz_is_not_best(test_text, startat=30,
-                                                                           vary_startingpos=False, display_string=False)
-                print('-------Finished %s ----------------------------------------' % test_file)
-
-    def test_the_act_corpus_text(self):
-        """ from http://compression.ca/act/act-text.html by Jeff Gilchrist
-            SMAZ doesn't really do very well here against entropy encoders (it would come last in the table).
-            But it's the best for the first 484 bytes (vs zlib and bz2)"""
-
-        test_files = ('1musk10.txt', 'anne11.txt', 'world95.txt')
-        test_data = []
-        print('-------Starting ACT test--------------')
-
-        for test_file in test_files:
-            with open('data/%s' % test_file,'r') as f:
-                test_data.append(f.read())
-        test_text = "".join(test_data)
-
-        self.cycle(test_text, show_input_and_output=False, strict=False)
-        self.find_shortest_substring_in_where_smaz_is_not_best(test_text, startat=30,
-                                                               vary_startingpos=False, display_string=False)
-
-    def test_the_national_university_of_singapore_sms_corpus(self):
-        """ from http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
-            slightly messed around with to remove anonymous <TOKENS> (John, 1234 put in their place)
-            also remove a few Chinese messages that crept in. About 40k text messages. Mostly in English.
-            Note: we are checking individual messages. bz2 and zlib would easily win if we ran against the entire file
-        """
-        self.corpus_line_by_line('data/sms_corpus-NUS.txt')
-
-    def test_the_leeds_internet_corpus_english_urls(self):
-        """ from http://corpus.leeds.ac.uk/internet.html, 40k urls """
-        self.corpus_line_by_line('data/final-url-en.txt')
-
     def corpus_line_by_line(self, filename):
         """ Process a .txt corpus file line by line
         """
-        with open(filename,'r') as f:
+        with open(filename, 'r') as f:
             lines = f.read()
         test_data = lines.split('\n')
         c_data = []
@@ -734,8 +504,8 @@ class TestSmaz(TestCase):
             c_data.append(compress(test))
             bz_data.append(bz2.compress(test))
             zlib_data.append(zlib.compress(test))
-            c_cl_data.append(compress_classic(test,pathological_case_detection=False))
-            c_cl_path_data.append(compress_classic(test,pathological_case_detection=True))
+            c_cl_data.append(compress_classic(test, pathological_case_detection=False))
+            c_cl_path_data.append(compress_classic(test, pathological_case_detection=True))
 
         print('Total data size %d bytes' % sum(len(x) for x in test_data))
         print(' Smaz size %d bytes' % sum(len(x) for x in c_data))
@@ -743,5 +513,252 @@ class TestSmaz(TestCase):
         print(' zlib size %d bytes' % sum(len(x) for x in zlib_data))
         print(' Smaz classic size %d bytes' % sum(len(x) for x in c_cl_data))
         print(' Smaz classic with pathological case detection size %d bytes' % sum(len(x) for x in c_cl_path_data))
+
+
+class TestSmaz(TestSmazBase):
+    def test_backtracking(self):
+        """ These are torture tests for the back tracking logic, in particular off by one type errors """
+        self.cycle('1000 numbers 2000 will 10 20 30 compress very little')
+        self.cycle('1000 numbers 2000 will 102030 compress very little')
+        self.cycle('GRAND CONTESTED ELECTION FOR THE PRESIDENCY OF THE UNITED STATES.')
+        self.cycle('t@')
+        self.cycle(('@' * 200 + ' ') * 10)
+        self.cycle(('@' * 200 + '  ') * 10)
+        self.cycle(('@' * 200 + '   ') * 10)
+        self.cycle(('@' * 200 + '   @') * 10)
+        self.cycle((('@' * 200 + '   ') * 10) + ' @')
+        self.cycle((('@' * 200 + '   ') * 10) + ' @ @')
+        self.cycle((('@' * 200 + '   ') * 10) + ' @ @ @')
+        self.cycle('not-a-g00d-Exampl333')
+        self.cycle("p<7l")
+        self.cycle(" !p")
+        self.cycle('7nqd')
+        self.cycle('#e]4z')
+        self.cycle(" *A'Rt")
+
+    def test_worstsize(self):
+        testcases = ['@' * i for i in xrange(0, 5000)]
+        for test in testcases:
+            self.assertEqual(len(_encapsulate(test)), _worst_size(len(test)))
+            self.assertEqual(test, decompress(_encapsulate(test)))  # Sanity checks
+            self.assertEqual(test, decompress("".join(_encapsulate_list(list(test)))))
+
+    def test_compress(self):
+        """ A series of basic tests, asserting that the string isn't a mess """
+        methods = (
+            (None, None),  # i.e. SMAZ
+        )
+
+        for tree, table in methods:
+            for test in TEST_DATA_LIST:
+                self.cycle(test, compress_tree=tree, decompress_table=table)
+
+    def test_encapsulate(self):
+        """ Test the encapsulation method """
+        for test in TEST_DATA_LIST:
+            self.assertEqual(test, decompress(_encapsulate(test)))
+            if test:
+                # noinspection PyTypeChecker
+                self.assertEqual(test, decompress("".join(_encapsulate_list(list(test)))))
+
+    def test_expected_compression_results(self):
+        """ This test asserts some expected behavior in terms out compressed output, if you change the compression
+            algorithm (or decoding table) this will change. """
+        self.assertEqual(len(compress('thethethe')), 3)
+        self.assertEqual(len(compress('thewhich')), 2)
+        self.assertEqual(len(compress('123thewhich123')), 12)
+        self.assertEqual(len(compress('not-a-g00d-Exampl333')), 20)
+
+    def test_mobydick(self):
+        """ Test the first paragraph, and the full first chapter. """
+        self.cycle(MOBYDICK_PARAGRAPH1)
+        self.cycle(MOBYDICK_CHAPTER1)
+
+    @heavytest
+    def test_scaling(self):
+        """ Test (but don't assert) that SMAZ scales linearly with string length - i.e. O(N) """
+        print('factor should remain roughly constant if performance is O(N)')
+        for i in (1, 5, 10, 20, 50, 100, 250, 500, 1000, 2500, 10000, 100000):
+            runs = 1
+            if i < 10000:
+                runs = 100
+                if i < 500:
+                    runs = 1000
+
+            tick = datetime.datetime.now()
+            cdata = [compress(FIVE_MEGABYTES_OF_MOBY_DICK[0:i]) for _ in xrange(runs)]
+            tock = datetime.datetime.now()
+            tdf = self.timedelta_to_float(tock - tick)
+            print('%i, %f, factor: %.10f - %d' % (i, tdf, tdf / (float(i) * float(runs)), len(cdata)))
+
+    def test_onlycompressable(self):
+        self.cycle("".join(DECODE))  # All the perfectly compressible words
+
+    @heavytest
+    def test_randomtext(self):
+        """ Test a large block of random text (1mb), then walk through it testing sub-strings of
+        length 1 to 64 characters. Basically fuzzing the compression algo, found a couple of interesting
+        bugs here around backtracking here."""
+        ascii_chars = [chr(i) for i in xrange(127)]
+        offset_range = 1024
+        mega = 2 ** 20
+        randomtext = "".join(random.choice(ascii_chars) for _ in xrange(mega + offset_range))
+        test_string = ''
+
+        try:
+            ## Test a megabyte of random text
+            test_string = randomtext
+            self.cycle(randomtext, quiet=True)
+
+            for i in xrange(64):
+                for j in xrange(offset_range):
+                    test_string = randomtext[j:j + i]
+                    self.cycle(test_string, quiet=True)
+        except ValueError as e:
+            print('Broken string:%s' % test_string)
+            print('Error: %s' % str(e))
+            raise
+
+    def test_ascii(self):
+        """ By default, we check we are only processing ascii data"""
+        self.assertRaises(ValueError, compress, chr(129))
+        for i in xrange(127):
+            compress(chr(i))  # Doesn't raise - valid data
+
+    @heavytest
+    def test_random_invalid_input(self):
+        """ Test we don't go off the rails with a large random input """
+        allbytes = [chr(i) for i in xrange(255)]
+        randominput = "".join(random.choice(allbytes) for _ in xrange(10000))  # 10kb of random bytes
+        for i in xrange(2048):
+            decompress(randominput[i:i + 4096], raise_on_error=False)  # Walk through the 4k of the range
+
+    def test_specific_bad_data(self):
+        """ A few implict error/edge cases in the SMAZ algorithm """
+        buffer_overflow = chr(255) + chr(255)  # Buffer overflow - expects 254 bytes, gets 0
+        multibyte_non_ascii = chr(255) + chr(1) + chr(200) + chr(200)  # Non ascii multi-byte payload
+        singlebyte_non_ascii = chr(254) + chr(129)  # Non ascii single-byte payload
+
+        self.assertFalse(_check_ascii(multibyte_non_ascii))
+        self.assertEqual(decompress(buffer_overflow, raise_on_error=False), None)
+        self.assertRaises(ValueError, decompress, buffer_overflow, raise_on_error=True)
+        self.assertEqual(decompress(multibyte_non_ascii), (chr(200) + chr(200)))  # Returns non-ascii data
+        self.assertRaises(ValueError, decompress, multibyte_non_ascii, raise_on_error=True, check_ascii=True)
+        self.assertEqual(decompress(multibyte_non_ascii, raise_on_error=False, check_ascii=True), None)
+        self.assertEqual(decompress(singlebyte_non_ascii), chr(129))  # Returns non-ascii data
+        self.assertRaises(ValueError, decompress, singlebyte_non_ascii, raise_on_error=True, check_ascii=True)
+        self.assertEqual(decompress(singlebyte_non_ascii, raise_on_error=False, check_ascii=True), None)
+
+    def test_ascii_check(self):
+        """ Test the ascii check """
+        self.assertTrue(_check_ascii('1230ABCZADSADW'))
+        self.assertFalse(_check_ascii(chr(129) + chr(129)))
+        self.assertEquals(None, compress(chr(129), raise_on_error=False))
+
+    def test_make_trie(self):
+        """ Test the tree building function. A bit weak """
+        self.assertEqual(make_trie(DECODE), SMAZ_TREE)  # A bit weak
+        self.assertRaises(ValueError, make_trie, None)
+        self.assertRaises(ValueError, make_trie, [])
+        self.assertRaises(ValueError, make_trie, ['b', 'b'])
+        self.assertRaises(ValueError, make_trie, ['%d' % i for i in xrange(257)])
+
+    def test_quick_string_check(self):
+        """ A quick performant sanity check of strings """
+        self.performance_string(MOBYDICK_CHAPTER1, 200, 1, 100, 2)
+
+    @heavytest
+    def test_very_very_small_strings(self):
+        """ Test strings varying in length from 1 to 10 chars from MOBY DICK. All safely inside L1 cache"""
+        self.performance_string(MOBYDICK_CHAPTER1, 20000, 1, 10, 1)
+
+    @heavytest
+    def test_very_small_strings(self):
+        """ Test strings varying in length from 3 to 20 chars from MOBY DICK. All safely inside L1 cache"""
+        self.performance_string(MOBYDICK_CHAPTER1, 10000, 3, 20, 1)
+
+    @heavytest
+    def test_small_strings(self):
+        """ Test strings varying in length from 20 to 100 chars from MOBY DICK. All safely inside L1 cache"""
+        self.performance_string(MOBYDICK_CHAPTER1, 900, 20, 100, 3)
+
+    @heavytest
+    def test_medium_strings(self):
+        """ Test strings of length 100k from MOBY DICK. Blows L1 cache """
+        self.performance_string(FIVE_MEGABYTES_OF_MOBY_DICK, 100, 100000, 100010, 1000)
+
+    @heavytest
+    def test_very_large_string(self):
+        """ This should safely break any cosy L1 and L2 cache dependencies"""
+        self.performance_string(FIVE_MEGABYTES_OF_MOBY_DICK, 1, len(FIVE_MEGABYTES_OF_MOBY_DICK),
+                                len(FIVE_MEGABYTES_OF_MOBY_DICK) + 1, 2)
+
+    @heavytest
+    def test_prove_optimal(self):
+        """ Prove that SMAZ is optimal (vs bz2 and zlib) for very small strings """
+        for i in xrange(1, 10):
+            self.prove_optimal_for_string_length(i)
+
+    @heavytest
+    def test_find_shortest_substring_in_mobydick_where_smaz_breaks(self):
+        if RUN_HEAVY_TESTS:
+            print('Checking first chapter of Moby Dick')
+            self.find_shortest_substring_in_where_smaz_is_not_best(MOBYDICK_CHAPTER1)
+            print('Checking first paragraph of Moby Dick')
+            self.find_shortest_substring_in_where_smaz_is_not_best(MOBYDICK_PARAGRAPH1, startat=700,
+                                                                   vary_startingpos=False)
+
+class TestCorpusVsSmaz(TestSmazBase):
+    """ The test data required for these tests is included on Github, but not in the Pypi package. Go to
+        http://github.com/CordySmith/PySmaz to get the tests/data for this.
+    """
+
+    @heavytest
+    def test_the_canterbury_corpus(self):
+        """ Exercise the ascii bits of the Canterbury Corpus - the lisp file is interesting. """
+        test_files = ('alice29.txt', 'asyoulik.txt', 'cp.html', 'fields.c', 'grammar.lsp', 'lcet10.txt', 'plrabn12.txt')
+        for test_file in test_files:
+            with open('data/%s' % test_file, 'r') as f:
+                test_text = f.read()
+                print('-------Starting Canterbury Corpus file: %s ----------------' % test_file)
+                self.cycle(test_text, show_input_and_output=False, strict=False)
+                self.find_shortest_substring_in_where_smaz_is_not_best(test_text, startat=30,
+                                                                       vary_startingpos=False, display_string=False)
+                print('-------Finished %s ----------------------------------------' % test_file)
+
+    @heavytest
+    def test_the_act_corpus_text(self):
+        """ from http://compression.ca/act/act-text.html by Jeff Gilchrist
+            SMAZ doesn't really do very well here against entropy encoders (it would come last in the table).
+            But it's the best for the first 484 bytes (vs zlib and bz2)"""
+
+        test_files = ('1musk10.txt', 'anne11.txt', 'world95.txt')
+        test_data = []
+        print('-------Starting ACT test--------------')
+
+        for test_file in test_files:
+            with open('data/%s' % test_file, 'r') as f:
+                test_data.append(f.read())
+        test_text = "".join(test_data)
+
+        self.cycle(test_text, show_input_and_output=False, strict=False)
+        self.find_shortest_substring_in_where_smaz_is_not_best(test_text, startat=30,
+                                                               vary_startingpos=False, display_string=False)
+
+    @heavytest
+    def test_the_national_university_of_singapore_sms_corpus(self):
+        """ from http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
+            slightly messed around with to remove anonymous <TOKENS> (John, 1234 put in their place)
+            also remove a few Chinese messages that crept in. About 40k text messages. Mostly in English.
+            Note: we are checking individual messages. bz2 and zlib would easily win if we ran against the entire file
+        """
+        self.corpus_line_by_line('data/sms_corpus-NUS.txt')
+
+    @heavytest
+    def test_the_leeds_internet_corpus_english_urls(self):
+        """ from http://corpus.leeds.ac.uk/internet.html, 40k urls """
+        self.corpus_line_by_line('data/final-url-en.txt')
+
+
 
 

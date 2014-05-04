@@ -20,23 +20,28 @@ Except for text samples which are in the public domain and from:
 
  NUS SMS Corpus
  --------------
-   http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
-   Tao Chen and Min-Yen Kan (2012). Creating a Live, Public Short Message Service Corpus: The NUS SMS Corpus.
-   Language Resources and Evaluation. Aug 2012. [doi:10.1007/s10579-012-9197-9]
+  http://wing.comp.nus.edu.sg:8080/SMSCorpus/overview.jsp
+  Tao Chen and Min-Yen Kan (2012). Creating a Live, Public Short Message Service Corpus: The NUS SMS Corpus.
+  Language Resources and Evaluation. Aug 2012. [doi:10.1007/s10579-012-9197-9]
 
  Leeds Collection of Internet Corpora
  ------------------------------------
   http://corpus.leeds.ac.uk/internet.html
   Serge Sharoff
 
-USAGE
+Usage
 -----
 
 from lib.smaz import compress, decompress
 compressedData = compress('Hello World!')
 decompressedData = decompress(compressedData)
 
-A FEW NOTES ON THE PYTHON PORT
+Versions
+========
+1.0.0 - original release (dict based tree structure)
+1.0.1 - throughput improvements approx 10%
+
+A Few Notes on the Python Port
 ------------------------------
 
 PySmaz is Python 2.x, 3.x and PyPy compatible. I've tested with the latest versions, if you do find an issue with an
@@ -45,11 +50,11 @@ earlier version, please let me know, and I'll address it.
 The original C implementation used a table approach, along with some hashing to select the right entry. My first attempt
  used the original C-style approach and barely hit 170k/sec on CPython and a i7.
 
-The tree based approach gets closer to one megabyte per second on the same setup. The difference is performance is
+The trie based approach gets closer to one megabyte per second on the same setup. The difference is performance is
 largely due to the inner loop not always checking 7 characters per character - i.e. O(7n) vs O(n). I've tried to balance
 readability with performance, hopefully it's clear what's going on.
 
-Decompression performance is limited by the single byte approach, and reaches 3.7 megabytes per second. To squeeze
+Decompression performance is limited by the single byte approach, and reaches 4.0 megabytes per second. To squeeze
 more performance it might be worth considering a multi-byte table for decoding.
 
 After eliminating the O(n^2) string appends, PyPy performance is very impressive.
@@ -73,7 +78,7 @@ too far off bz2... but zlib crushes it.
    -----------------
                      SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
    Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s      74.0 mb/s
-   Decomp throughput  3.6 mb/s      16.5 mb/s    30.3 mb/s     454.6 mb/s
+   Decomp throughput  4.0 mb/s      19.5 mb/s    30.3 mb/s     454.6 mb/s
 
 Compression varies but a reduction to 60% of the original size is pretty typical. Here are some results from some common
 text compression corpuses, the text messages and the urls individually encoded are pretty strong. Everything else is
@@ -192,11 +197,59 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSE
 WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 """
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __maintainer__ = "Max Smith"
 __email__ = None  # Sorry, I get far too much spam as it is. Track me down at http://www.notonbluray.com
 
 BACKTRACK_LIMIT = 254  # No point backtracking more than 255 characters
+
+
+def make_trie(decode_table):
+    """ Create a trie representing the encoding strategy implied by the passed table.
+        For each string in the table, assign it an encoded value, walk through the string
+        creating a node for each character at a position (if none already exists), and when
+        we reach the end of the string populate that node with the assigned encoded value.
+
+    :param decode_table: list
+    """
+    empty_node = list(None for _ in range(0, 256))
+    root_node = list(empty_node)
+    if not decode_table:
+        raise ValueError('Empty data passed to make_tree')
+    elif len(decode_table) > 254:
+        raise ValueError('Too long list in make tree: %d' % len(decode_table))
+    else:
+        for enc_byte, sstr in enumerate(decode_table):
+            node_ptr = root_node
+            for str_pos, ch in enumerate(sstr):
+                if node_ptr[ord(ch)]:  # If a child node exists for character
+                    terminal_byte, children = node_ptr[ord(ch)]
+                    if len(sstr) == str_pos + 1:  # At the end ?
+                        if not terminal_byte:
+                            node_ptr[ord(ch)] = [chr(enc_byte), children]
+                            break
+                        else:
+                            raise ValueError('Unexpected terminal: duplicates in data (%s) (%s) (%s)' %
+                                             (sstr, ch, node_ptr))
+                    node_ptr = children
+                else:  # Create the child node
+                    if len(sstr) == str_pos + 1:  # At the end ?
+                        node_ptr[ord(ch)] = [chr(enc_byte), list(empty_node)]
+                    else:
+                        node_ptr[ord(ch)] = [None, list(empty_node)]
+                        _, node_ptr = node_ptr[ord(ch)]
+    # Now we've built the trie, we can optimize it a bit by replacing empty terminal nodes early with None
+    stack = list(root_node)
+    while stack:
+        node_ptr = stack.pop()
+        if node_ptr:
+            _, children = node_ptr
+            if children == empty_node:
+                node_ptr[1] = None  # Replace empty entries with None
+            else:
+                stack.extend(children)
+    return root_node
+
 
 def make_tree(decode_table):
     """ Create a tree representing the encoding strategy implied by the passed table.
@@ -222,7 +275,8 @@ def make_tree(decode_table):
                             node_ptr[ch] = (chr(enc_byte), children)
                             break
                         else:
-                            raise ValueError('Unexpected terminal: duplicates in data (%s) (%s) (%s)' % (sstr, ch, node_ptr))
+                            raise ValueError('Unexpected terminal: duplicates in data (%s) (%s) (%s)' %
+                                             (sstr, ch, node_ptr))
                     node_ptr = children
                 else:  # Create the child node
                     if len(sstr) == str_pos + 1:  # At the end ?
@@ -233,7 +287,7 @@ def make_tree(decode_table):
     return root_node
 
 # Can be up to 253 entries in this table.
-DECODE = (" ", "the", "e", "t", "a", "of", "o", "and", "i", "n", "s", "e ", "r", " th",
+DECODE = [" ", "the", "e", "t", "a", "of", "o", "and", "i", "n", "s", "e ", "r", " th",
           " t", "in", "he", "th", "h", "he ", "to", "\r\n", "l", "s ", "d", " a", "an",
           "er", "c", " o", "d ", "on", " of", "re", "of ", "t ", ", ", "is", "u", "at",
           "   ", "n ", "or", "which", "f", "m", "as", "it", "that", "\n", "was", "en",
@@ -253,58 +307,10 @@ DECODE = (" ", "the", "e", "t", "a", "of", "o", "and", "i", "n", "s", "e ", "r",
           "pe", " re", "there", "ass", "si", " fo", "wa", "ec", "our", "who", "its", "z",
           "fo", "rs", ">", "ot", "un", "<", "im", "th ", "nc", "ate", "><", "ver", "ad",
           " we", "ly", "ee", " n", "id", " cl", "ac", "il", "</", "rt", " wi", "div",
-          "e, ", " it", "whi", " ma", "ge", "x", "e c", "men", ".com")
+          "e, ", " it", "whi", " ma", "ge", "x", "e c", "men", ".com"]
 
 # Can be regenerated with the below line
-# SMAZ_TREE = make_tree(DECODE)
-SMAZ_TREE = {'\n': ('1', {'\r': (None, {'\n': ('\xa7', {})})}), '\r': ('9', {'\n': ('\x15', {'\r': ('\xa8', {})})}),
-             ' ': ('\x00', {'a': ('\x19', {' ': ('\x92', {}), 'n': ('7', {})}), ' ': ('4', {' ': ('(', {})}),
-            'c': ('I', {'l': ('\xee', {}), 'o': ('\xa1', {})}), 'b': ('^', {'e': ('\xaa', {})}), 'e': ('\xab', {}),
-            'd': ('\xa5', {}), 'f': ('h', {'o': ('\xd5', {})}), 'i': ('8', {'t': ('\xf6', {}), 'n': ('N', {})}),
-            'h': ('U', {'a': ('\xc9', {})}), 'm': ('{', {'a': ('\xf8', {})}), 'l': ('\xcd', {}), 'o': ('\x1d',
-            {'n': ('\xca', {}), 'f': (' ', {})}), 'n': ('\xec', {}), 'p': ('}', {}), 's': ('>', {}), 'r': ('\xbd',
-            {'e': ('\xd1', {})}), 't': ('\x0e', {'h': ('\r', {}), 'o': ('R', {})}), 'w': ('5', {'a': ('\xb9', {}),
-            'h': ('\x9f', {}), 'e': ('\xe9', {}), 'i': ('\xf3', {})})}), '"': ('e', {}), '-': ('\xcc', {}), ',':
-            ('Q', {' ': ('$', {'a': ('\x94', {})})}), '/': ('\xc5', {}), '.': ('n', {' ': ('y', {}), 'c': (None,
-            {'o': (None, {'m': ('\xfd', {})})})}), '=': (None, {'"': ('\xa9', {})}), '<': ('\xe1', {'/': ('\xf1',
-            {})}), '>': ('\xde', {'<': ('\xe6', {})}), 'T': (None, {'h': (None, {'e': ('H', {})})}),
-            'a': ('\x04', {' ': ('\xa3', {}), 'c': ('\xef', {}), 'd': ('\xe8', {}), 'l': ('X', {'l': ('p', {})}),
-            'n': ('\x1a', {'d': ('\x07', {})}), 's': ('.', {' ': ('\x8c', {}), 's': ('\xd3', {})}),
-            'r': ('O', {'e': ('w', {})}), 't': ("'", {'i': ('\xce', {}), ' ': ('\x87', {}), 'e': ('\xe5', {})})}),
-            'c': ('\x1c', {'h': ('\x99', {' ': ('\xc1', {})}), 'e': ('\x88', {}), 'o': ('u', {})}),
-            'b': ('Z', {'y': ('\x7f', {}), 'u': (None, {'t': ('\xb1', {})}), 'e': ('\\', {})}),
-            'e': ('\x02', {'a': ('x', {}), ' ': ('\x0b', {'a': ('\xbc', {}), 'c': ('\xfb', {}),
-            's': ('\xb5', {}), 't': ('\x9c', {}), 'o': ('\xa2', {})}), 'c': ('\xd7', {}), 'e': ('\xeb', {}),
-            'd': ('B', {' ': ('@', {})}), '\r': (None, {'\n': ('\x9e', {})}), 'l': ('\xb2', {}), 'n': ('3',
-            {' ': ('\xcf', {}), 't': ('a', {})}), 's': ('6', {' ': ('~', {})}), 'r': ('\x1b', {' ': ('|', {}),
-            'e': ('\xa0', {})}), ',': (None, {' ': ('\xf5', {})})}), 'd': ('\x18', {'i': ('\x81',
-            {'v': ('\xf4', {})}), ' ': ('\x1e', {'t': ('\x86', {})}), 'e': ('j', {})}), 'g': (';', {' ':
-            ('\x9d', {}), 'e': ('\xf9', {})}), 'f': (',', {' ': (':', {'t': ('v', {})}), 'r': (None, {'o': (None,
-            {'m': ('g', {})})}), 'o': ('\xdc', {'r': ('D', {})})}), 'i': ('\x08', {'c': ('\x83', {}), 'd': ('\xed',
-            {}), 'm': ('\xe2', {}), 'l': ('\xf0', {}), 'o': ('\x90', {'n': ('k', {})}), 'n': ('\x0f', {' ': ('i',
-            {}), 'g': ('F', {})}), 's': ('%', {' ': ('t', {})}), 't': ('/', {'s': ('\xda', {})}), 'v': ('\xba',
-            {})}), 'h': ('\x12', {'a': ('b', {'v': (None, {'e': ('\xc6', {})}), 'd': ('\x9a', {}), 't': ('\xbe',
-            {})}), ' ': ('\x8a', {}), 'e': ('\x10', {' ': ('\x13', {}), 'r': ('z', {})}), 'i': ('f',
-            {'s': ('L', {})}), 'o': ('\xbb', {}), 't': (None, {'t': (None, {'p': (None, {':': (None, {'/': (None,
-            {'/': ('C', {})})})})})})}), 'm': ('-', {'a': ('\xad', {}), 'e': ('l', {'n': ('\xfc', {})})}),
-            'l': ('\x16', {'a': ('\x89', {}), ' ': ('\xb4', {}), 'e': ('W', {}), 'i': ('\x97', {}), 'l': ('\x98', {}),
-            'y': ('\xea', {' ': ('\xc7', {})})}), 'o': ('\x06', {' ': ('`', {}), 'f': ('\x05', {' ': ('"', {})}),
-            'm': ('\x93', {}), 'n': ('\x1f', {' ': ('\x8e', {}), 'e': ('\xae', {})}), 'r': ('*', {' ': ('\xb0', {})}),
-            'u': ('[', {'r': ('\xd8', {})}), 't': ('\xdf', {})}), 'n': ('\t', {' ': (')', {'t': ('\x8f', {})}), 'c':
-            ('\xe4', {}), 'e': ('\x8b', {}), 'd': ('=', {' ': ('?', {})}), 'g': ('T', {' ': ('c', {})}), 'o':
-            ('\xb7', {'t': ('\x84', {})}), 's': ('\xc0', {}), 't': ('P', {})}), 'p': ('<', {'e': ('\xd0', {})}), 's':
-            ('\n', {' ': ('\x17', {'a': ('\xac', {}), 't': ('\xbf', {}), 'o': ('\x95', {})}), 'e': ('_', {}), 'i':
-            ('\xd4', {}), ',': ('\xb6', {' ': ('\x85', {})}), 'o': ('\xb3', {}), 's': ('\xa6', {}), 't': ('M', {})}),
-            'r': ('\x0c', {'a': ('\x82', {}), ' ': ('K', {}), 'e': ('!', {' ': ('q', {})}), 'i': ('r', {}), 'o': ('s',
-            {}), 's': ('\xdd', {}), 't': ('\xf2', {})}), 'u': ('&', {'s': ('\xa4', {}), 'r': ('\x96', {}), 't': ('\xc4',
-            {}), 'n': ('\xe0', {})}), 't': ('\x03', {'a': ('\xc8', {}), ' ': ('#', {'t': ('\xaf', {})}), 'e': ('E',
-            {'r': ('\xb8', {})}), 'i': ('J', {'o': ('\x8d', {})}), 'h': ('\x11', {'a': ('\xcb', {'t': ('0', {})}),
-            'i': (None, {'s': ('\x9b', {})}), 'e': ('\x01', {'i': (None, {'r': ('d', {})}), 'y': ('\x80', {}), 'r':
-            (None, {'e': ('\xd2', {})})}), ' ': ('\xe3', {})}), 'o': ('\x14', {' ': ('Y', {})}), 'r': ('\xc3', {})}),
-            'w': ('A', {'a': ('\xd6', {'s': ('2', {})}), 'h': ('\xc2', {'i': ('\xf7', {'c': (None, {'h': ('+', {})})}),
-            'o': ('\xd9', {})}), 'e': ('\x91', {'r': (None, {'e': (']', {})})}), 'i': (None, {'t': (None, {'h':
-            ('V', {})})})}), 'v': ('m', {'e': ('o', {'r': ('\xe7', {})})}), 'y': ('S', {' ': ('G', {})}), 'x':
-            ('\xfa', {}), 'z': ('\xdb', {})}
+SMAZ_TREE = make_trie(DECODE)
 
 
 def _check_ascii(sstr):
@@ -326,6 +332,7 @@ def _encapsulate(input_str):
                 output.append(chr(255) + chr(len(chunk) - 1))
                 output.append(chunk)
         return "".join(output)
+
 
 def _encapsulate_list(input_list):
     """ There are some pathological cases, where it may be better to just encapsulate the string in 255 code chunks
@@ -410,13 +417,14 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
         unmatched = []       # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
         backtrack_buff = []  # Single bytes. Encoded between last_backtrack_pos and pos (excl enc_buf and unmatched)
         enc_buf = []         # Single bytes. Encoded output for the current run of compression codes
+
         last_backtrack_pos = pos = 0
         while pos < input_str_len:
             tree_ptr = compression_tree
             enc_byte = None
             j = 0
             while j < input_str_len - pos:  # Search the tree for the longest matching sequence
-                byte_val, tree_ptr = tree_ptr.get(input_str[pos + j], terminal_tree_node)
+                byte_val, tree_ptr = tree_ptr[ord(input_str[pos + j])] or terminal_tree_node
                 j += 1
                 if byte_val is not None:
                     enc_byte = byte_val  # Remember this match, and search for a longer one
@@ -454,6 +462,7 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
                             unmatched = []
                     enc_buf = []
             else:
+                # noinspection PyUnboundLocalVariable
                 pos += enc_len  # We did match in the tree, advance along, by the number of bytes matched
                 enc_buf.append(enc_byte)
                 if unmatched:  # Entering an encoding run
@@ -478,7 +487,7 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
 
 
 def compress_classic(input_str, pathological_case_detection=True):
-    """ A tree version of the original SMAZ compressor, should give identical output to C version.
+    """ A trie version of the original SMAZ compressor, should give identical output to C version.
         Faster on typical material, but can be tripped up by pathological cases.
         :type input_str: str
         :type pathological_case_detection: bool
@@ -498,15 +507,16 @@ def compress_classic(input_str, pathological_case_detection=True):
         input_str_len = len(input_str)
 
         # Invariant: All of these arrays assume len(array) = number of bytes in array
-        output = []          # Single bytes. Committed, non-back-track-able output
-        unmatched = []       # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
+        output = []     # Single bytes. Committed, non-back-track-able output
+        unmatched = []  # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
+
         pos = 0
         while pos < input_str_len:
             tree_ptr = SMAZ_TREE
             enc_byte = None
             j = 0
             while j < input_str_len - pos:  # Search the tree for the longest matching sequence
-                byte_val, tree_ptr = tree_ptr.get(input_str[pos + j], terminal_tree_node)
+                byte_val, tree_ptr = tree_ptr[ord(input_str[pos + j])] or terminal_tree_node
                 j += 1
                 if byte_val is not None:
                     enc_byte = byte_val  # Remember this match, and search for a longer one
@@ -518,6 +528,7 @@ def compress_classic(input_str, pathological_case_detection=True):
                 unmatched.append(input_str[pos])
                 pos += 1  # We didn't match any stems, add the character the unmatched list
             else:
+                # noinspection PyUnboundLocalVariable
                 pos += enc_len  # We did match in the tree, advance along, by the number of bytes matched
                 if unmatched:  # Entering an encoding run
                     output.extend(_encapsulate_list(unmatched))

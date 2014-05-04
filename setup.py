@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name='pySmaz',
-    version='1.0.0',
+    version='1.0.1',
     packages=['lib', 'tests'],
     url='https://github.com/cordysmith/PySmaz/',
     license='BSD',
