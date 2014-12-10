@@ -51,44 +51,44 @@ Decompression performance is limited by the single byte approach, and reaches 4.
 
 After eliminating the O(n^2) string appends, PyPy performance is very impressive.
 
-How should you use it ?
+### How should you use it ?
 
 SMAZ works best on small ASCII English strings up to about 100 bytes. Beyond that length it is outperformed by entropy coders (bz2,zlib).
 
 SMAZ Throughput on small strings is approximately equal to bz2 and zlib, due to the high setup cost per call to the entropy coders.
 
-   STRINGS 1 to 8 BYTES
-   --------------------
-                     SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
-   Comp   throughput  0.5 mb/s       4.0 mb/s     0.2 mb/s     0.43 mb/s
-   Decomp throughput  1.4 mb/s      14.0 mb/s     0.5 mb/s      2.6 mb/s
+     STRINGS 1 to 8 BYTES
+     --------------------
+                       SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
+     Comp   throughput  0.5 mb/s       4.0 mb/s     0.2 mb/s     0.43 mb/s
+     Decomp throughput  1.4 mb/s      14.0 mb/s     0.5 mb/s      2.6 mb/s
 
 On larger strings the relative advantages drop away, and the entropy coders are a better bet. Interestingly SMAZ isn't too far off bz2... but zlib crushes it.
 
-   5 MEGABYTE STRINGS
-   ------------------
-                     SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
-   Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s     74.0 mb/s
-   Decomp throughput  4.0 mb/s      19.5 mb/s    30.3 mb/s    454.6 mb/s
+     5 MEGABYTE STRINGS
+     ------------------
+                       SMAZ(CPython)  SMAZ(PyPy)         bz2          zlib
+     Comp   throughput  0.9 mb/s       2.0 mb/s     2.0 mb/s     74.0 mb/s
+     Decomp throughput  4.0 mb/s      19.5 mb/s    30.3 mb/s    454.6 mb/s
 
 Compression varies but a reduction to 60% of the original size is pretty typical. Here are some results from some common text compression corpuses, the text messages and the urls individually encoded are pretty strong. Everything else is dire.
 
-   COMPRESSION RESULTS
-   -------------------
-                      Original   SMAZ*      bz2    zlib SMAZc **  SMAZcp ***
-   NUS SMS Messages    2666533 1851173  4106666 2667754  1876762     1864025
-   alice29.txt          148481   91958    43102   53408    92405
-   asyoulik.txt         125179   83762    39569   48778    84707
-   cp.html               24603   19210     7624    7940    19413
-   fields.c              11150    9511     3039    3115    10281
-   grammar.lsp            3721    3284     1283    1222     3547
-   lcet10.txt           419235  252085   107648  142604   254131
-   plrabn12.txt         471162  283407   145545  193162   283515
-   ACT corpus (concat) 4802130 3349766  1096139 1556366  3450138
-   Leeds URL corpus    4629439 3454264  7246436 5011830  3528446     3527606
-   * SMAZ with back-tracking
-   ** SMAZ classic (original algorithm)
-   *** SMAZ classic with pathological case detection
+     COMPRESSION RESULTS
+     -------------------
+                        Original   SMAZ*      bz2    zlib SMAZc **  SMAZcp ***
+     NUS SMS Messages    2666533 1851173  4106666 2667754  1876762     1864025
+     alice29.txt          148481   91958    43102   53408    92405
+     asyoulik.txt         125179   83762    39569   48778    84707
+     cp.html               24603   19210     7624    7940    19413
+     fields.c              11150    9511     3039    3115    10281
+     grammar.lsp            3721    3284     1283    1222     3547
+     lcet10.txt           419235  252085   107648  142604   254131
+     plrabn12.txt         471162  283407   145545  193162   283515
+     ACT corpus (concat) 4802130 3349766  1096139 1556366  3450138
+     Leeds URL corpus    4629439 3454264  7246436 5011830  3528446     3527606
+     * SMAZ with back-tracking
+     ** SMAZ classic (original algorithm)
+     *** SMAZ classic with pathological case detection
 
 If you have a use-case where you need to keep an enormous amount of small (separate) strings that isn't going to be limited by PySmaz's throughput, then congratulations !
 
@@ -103,27 +103,26 @@ Background
 
 From the original description::
 
-    SMAZ - compression for very small strings
-    -----------------------------------------
+SMAZ - compression for very small strings
+-----------------------------------------
 
-    Smaz is a simple compression library suitable for compressing very short
-    strings. General purpose compression libraries will build the state needed
-    for compressing data dynamically, in order to be able to compress every kind
-    of data. This is a very good idea, but not for a specific problem: compressing
-    small strings will not work.
+Smaz is a simple compression library suitable for compressing very short
+strings. General purpose compression libraries will build the state needed
+for compressing data dynamically, in order to be able to compress every kind
+of data. This is a very good idea, but not for a specific problem: compressing
+small strings will not work.
 
-    Smaz instead is not good for compressing general purpose data, but can compress
-    text by 40-50% in the average case (works better with English), and is able to
-    perform a bit of compression for HTML and urls as well. The important point is
-    that Smaz is able to compress even strings of two or three bytes!
+Smaz instead is not good for compressing general purpose data, but can compress
+text by 40-50% in the average case (works better with English), and is able to
+perform a bit of compression for HTML and urls as well. The important point is
+that Smaz is able to compress even strings of two or three bytes!
 
-    For example the string "the" is compressed into a single byte.
+For example the string "the" is compressed into a single byte.
 
-    To compare this with other libraries, think that like zlib will usually not be
-    able to compress text shorter than 100 bytes.
+To compare this with other libraries, think that like zlib will usually not be
+able to compress text shorter than 100 bytes.
 
-    COMPRESSION EXAMPLES
-    --------------------
+####COMPRESSION EXAMPLES
 
     'This is a small string' compressed by 50%
     'foobar' compressed by 34%
@@ -134,22 +133,22 @@ From the original description::
     'this is an example of what works very well with smaz' compressed by 49%
     '1000 numbers 2000 will 10 20 30 compress very little' compressed by 10%
 
-    In general, lowercase English will work very well. It will suck with a lot
-    of numbers inside the strings. Other languages are compressed pretty well too,
-    the following is Italian, not very similar to English but still compressible
-    by smaz:
+In general, lowercase English will work very well. It will suck with a lot
+of numbers inside the strings. Other languages are compressed pretty well too,
+the following is Italian, not very similar to English but still compressible
+by smaz:
 
     'Nel mezzo del cammin di nostra vita, mi ritrovai in una selva oscura' compressed by 33%
     'Mi illumino di immenso' compressed by 37%
     'L'autore di questa libreria vive in Sicilia' compressed by 28%
 
-    It can compress URLS pretty well:
+It can compress URLS pretty well:
 
     'http://google.com' compressed by 59%
     'http://programming.reddit.com' compressed by 52%
     'http://github.com/antirez/smaz/tree/master' compressed by 46%
 
-    CREDITS
-    -------
-    Small was written by Salvatore Sanfilippo and is released under the BSD license. See LICENSE section for more
-    information
+####CREDITS
+
+Small was written by Salvatore Sanfilippo and is released under the BSD license. See LICENSE section for more
+information
