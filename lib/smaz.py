@@ -44,7 +44,7 @@ Versions
 A Few Notes on the Python Port
 ------------------------------
 
-PySmaz is Python 2.x, 3.x and PyPy compatible. I've tested with the latest versions, if you do find an issue with an
+PySmaz is Python 2.x and PyPy (and mostly 3.x) compatible. I've tested with the latest versions, if you do find an issue with an
 earlier version, please let me know, and I'll address it.
 
 The original C implementation used a table approach, along with some hashing to select the right entry. My first attempt
@@ -201,6 +201,12 @@ __version__ = "1.0.1"
 __maintainer__ = "Max Smith"
 __email__ = None  # Sorry, I get far too much spam as it is. Track me down at http://www.notonbluray.com
 
+try:
+    # noinspection PyShadowingBuiltins
+    xrange = range  # Fix for python 3 compatibility.
+except NameError:
+    pass
+
 BACKTRACK_LIMIT = 254  # No point backtracking more than 255 characters
 
 
@@ -212,7 +218,7 @@ def make_trie(decode_table):
 
     :param decode_table: list
     """
-    empty_node = list(None for _ in range(0, 256))
+    empty_node = list(None for _ in xrange(0, 256))
     root_node = list(empty_node)
     if not decode_table:
         raise ValueError('Empty data passed to make_tree')
@@ -325,12 +331,14 @@ def _encapsulate(input_str):
         return input_str
     else:
         output = []
-        for chunk in (input_str[i:i+255] for i in range(0, len(input_str), 255)):
+        output_append = output.append
+        output_extend = output.extend
+        for chunk in (input_str[i:i+255] for i in xrange(0, len(input_str), 255)):
             if 1 == len(chunk):
-                output.append(chr(254) + chunk)
+                output_append(chr(254) + chunk)
             else:
-                output.append(chr(255) + chr(len(chunk) - 1))
-                output.append(chunk)
+                output_append(chr(255) + chr(len(chunk) - 1))
+                output_append(chunk)
         return "".join(output)
 
 
@@ -341,13 +349,15 @@ def _encapsulate_list(input_list):
         return input_list
     else:
         output = []
-        for chunk in (input_list[i:i+255] for i in range(0, len(input_list), 255)):
+        output_append = output.append
+        output_extend = output.extend
+        for chunk in (input_list[i:i+255] for i in xrange(0, len(input_list), 255)):
             if 1 == len(chunk):
-                output.append(chr(254))
-                output.extend(chunk)
+                output_append(chr(254))
+                output_extend(chunk)
             else:
-                output.extend((chr(255), chr(len(chunk) - 1)))
-                output.extend(chunk)
+                output_extend((chr(255), chr(len(chunk) - 1)))
+                output_extend(chunk)
         return output
 
 
@@ -418,6 +428,9 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
         backtrack_buff = []  # Single bytes. Encoded between last_backtrack_pos and pos (excl enc_buf and unmatched)
         enc_buf = []         # Single bytes. Encoded output for the current run of compression codes
 
+        # Ugly but fast
+        output_extend = output.extend
+
         last_backtrack_pos = pos = 0
         while pos < input_str_len:
             tree_ptr = compression_tree
@@ -446,8 +459,8 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
                     unmerge_len = len(backtrack_buff) + len(enc_buf) + _worst_size(len(unmatched))
                     if merge_len > unmerge_len + 2 or pos - last_backtrack_pos > backtrack_limit or not backtracking:
                         # Unmerge: gained at least 3 bytes through encoding, reset the backtrack marker to here
-                        output.extend(backtrack_buff)
-                        output.extend(enc_buf)
+                        output_extend(backtrack_buff)
+                        output_extend(enc_buf)
                         backtrack_buff = []
                         last_backtrack_pos = pos - 1
                     elif merge_len < unmerge_len:
@@ -469,9 +482,9 @@ def compress(input_str, check_ascii=True, raise_on_error=True, compression_tree=
                         backtrack_buff.extend(_encapsulate_list(unmatched))
                         unmatched = []
 
-        output.extend(backtrack_buff)
-        output.extend(_encapsulate_list(unmatched))
-        output.extend(enc_buf)
+        output_extend(backtrack_buff)
+        output_extend(_encapsulate_list(unmatched))
+        output_extend(enc_buf)
 
         # This may look a bit clunky, but it is worth 20% in cPython and O(n^2) -> O(n) in PyPy
         output = "".join(output)
@@ -510,6 +523,10 @@ def compress_classic(input_str, pathological_case_detection=True):
         output = []     # Single bytes. Committed, non-back-track-able output
         unmatched = []  # Single bytes. Current pool for encapsulating (i.e. 255/254 + unmatched)
 
+        # So this is ugly - but fast
+        output_extend = output.extend
+        output_append = output.append
+
         pos = 0
         while pos < input_str_len:
             tree_ptr = SMAZ_TREE
@@ -531,11 +548,11 @@ def compress_classic(input_str, pathological_case_detection=True):
                 # noinspection PyUnboundLocalVariable
                 pos += enc_len  # We did match in the tree, advance along, by the number of bytes matched
                 if unmatched:  # Entering an encoding run
-                    output.extend(_encapsulate_list(unmatched))
+                    output_extend(_encapsulate_list(unmatched))
                     unmatched = []
-                output.append(enc_byte)
+                output_append(enc_byte)
         if unmatched:
-            output.extend(_encapsulate_list(unmatched))
+            output_extend(_encapsulate_list(unmatched))
 
         if pathological_case_detection and len(output) > _worst_size(input_str_len):
             return _encapsulate(input_str)
@@ -563,6 +580,7 @@ def decompress(input_str, raise_on_error=True, check_ascii=False, decompress_tab
         decompress_table = decompress_table or DECODE
         input_str_len = len(input_str)
         output = []
+        output_append = output.append
         pos = 0
         try:
             while pos < input_str_len:
@@ -570,19 +588,19 @@ def decompress(input_str, raise_on_error=True, check_ascii=False, decompress_tab
                 pos += 1
                 if ch < 254:
                     # Code table entry
-                    output.append(decompress_table[ch])
+                    output_append(decompress_table[ch])
                 else:
                     next_byte = input_str[pos]
                     pos += 1
                     if 254 == ch:
                         # Verbatim byte
-                        output.append(next_byte)
+                        output_append(next_byte)
                     else:  # 255 == ch:
                         # Verbatim string
                         end_pos = pos + ord(next_byte) + 1
                         if end_pos > input_str_len:
                             raise ValueError('Invalid input to decompress - buffer overflow')
-                        output.append(input_str[pos:end_pos])
+                        output_append(input_str[pos:end_pos])
                         pos = end_pos
             # This may look a bit clunky, but it is worth 20% in cPython and O(n^2)->O(n) in PyPy
             output = "".join(output)

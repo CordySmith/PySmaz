@@ -41,7 +41,7 @@ Versions
 A Few Notes on the Python Port
 ==============================
 
-PySmaz is Python 2.x, 3.x and PyPy compatible. I've tested with the latest versions, if you do find an issue with an earlier version, please let me know, and I'll address it.
+PySmaz is Python 2.x, PyPy (and mostly Python 3.x) compatible. I've tested with the latest versions, if you do find an issue with an earlier version, please let me know, and I'll address it.
 
 The original C implementation used a table approach, along with some hashing to select the right entry. My first attempt used the original C-style approach and barely hit 170k/sec on CPython and a i7.
 
@@ -97,6 +97,8 @@ The unit tests explore PySmaz's performance against a series of common compressi
 On non-English strings (numbers, symbols, nonsense) it still does better with everything under 10 bytes (see unit test) And ignoring big wins for zlib like repeating sub-strings, out to 20 bytes it is dominant. This is mostly thanks to the pathological case detection and backtracking in the compress routine.
 
 Backtracking buys modest improvements to larger strings (1%) and deals with pathological sub-strings, again - you are better off using zlib for strings longer than 100 bytes in most cases.
+
+Notes on Python 3.x compatbility: Basically the split between bytes and strings is problematic for this codebase (in particular the unit tests !) I'll try and get it fixed-up over the next few months
 
 Background
 ==========

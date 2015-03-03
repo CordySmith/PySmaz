@@ -12,6 +12,7 @@ import zlib
 import datetime
 import itertools
 import random
+import sys
 
 from lib.smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, make_trie, SMAZ_TREE, _worst_size, \
     _encapsulate_list, compress_no_backtracking, compress_classic
@@ -24,6 +25,13 @@ try:
     xrange = range  # Fix for python 3 compatibility.
 except NameError:
     pass
+
+if sys.version_info[0] >= 3:
+    def fixstr(x):
+        return bytes(x, 'ISO-8859-1','ignore')
+else:
+    def fixstr(x):
+        return x
 
 RUN_HEAVY_TESTS = True  # False = 2 to 3 seconds, True = 2 to 3 minutes
 
@@ -739,7 +747,7 @@ class TestCorpusVsSmaz(TestSmazBase):
         for test_file in test_files:
             with open('data/%s' % test_file, 'r') as f:
                 test_data.append(f.read())
-        test_text = "".join(test_data)
+        test_text = fixstr("".join(test_data))
 
         self.cycle(test_text, show_input_and_output=False, strict=False)
         self.find_shortest_substring_in_where_smaz_is_not_best(test_text, startat=30,
