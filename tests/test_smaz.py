@@ -13,6 +13,7 @@ import datetime
 import itertools
 import random
 import sys
+import os
 
 from smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, \
                  make_trie, SMAZ_TREE, _worst_size, _encapsulate_list, \
@@ -33,6 +34,11 @@ if sys.version_info[0] >= 3:
 else:
     def fixstr(x):
         return x
+
+
+def _here(*x):
+    return os.path.join(os.path.dirname(os.path.realpath(__file__)), *x)
+
 
 RUN_HEAVY_TESTS = True  # False = 2 to 3 seconds, True = 2 to 3 minutes
 
@@ -727,7 +733,7 @@ class TestCorpusVsSmaz(TestSmazBase):
         """ Exercise the ascii bits of the Canterbury Corpus - the lisp file is interesting. """
         test_files = ('alice29.txt', 'asyoulik.txt', 'cp.html', 'fields.c', 'grammar.lsp', 'lcet10.txt', 'plrabn12.txt')
         for test_file in test_files:
-            with open('data/%s' % test_file, 'r') as f:
+            with open(_here('data', test_file), 'r') as f:
                 test_text = f.read()
                 print('-------Starting Canterbury Corpus file: %s ----------------' % test_file)
                 self.cycle(test_text, show_input_and_output=False, strict=False)
@@ -746,7 +752,7 @@ class TestCorpusVsSmaz(TestSmazBase):
         print('-------Starting ACT test--------------')
 
         for test_file in test_files:
-            with open('data/%s' % test_file, 'r') as f:
+            with open(_here('data', test_file), 'r') as f:
                 test_data.append(f.read())
         test_text = fixstr("".join(test_data))
 
@@ -761,9 +767,9 @@ class TestCorpusVsSmaz(TestSmazBase):
             also remove a few Chinese messages that crept in. About 40k text messages. Mostly in English.
             Note: we are checking individual messages. bz2 and zlib would easily win if we ran against the entire file
         """
-        self.corpus_line_by_line('data/sms_corpus-NUS.txt')
+        self.corpus_line_by_line(_here('data', 'sms_corpus-NUS.txt'))
 
     @heavytest
     def test_the_leeds_internet_corpus_english_urls(self):
         """ from http://corpus.leeds.ac.uk/internet.html, 40k urls """
-        self.corpus_line_by_line('data/final-url-en.txt')
+        self.corpus_line_by_line(_here('data', 'final-url-en.txt'))
