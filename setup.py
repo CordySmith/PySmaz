@@ -1,13 +1,14 @@
-from distutils.core import setup
+from setuptools import setup
+
 
 setup(
     name='pySmaz',
     version='1.0.1',
-    packages=['lib', 'tests'],
+    packages=['smaz', 'tests'],
     url='https://github.com/cordysmith/PySmaz/',
     license='BSD',
+    description='A small string compression library written in pure python.',
     author='Max Smith',
     author_email='',
-    description='A small string compression library written in pure python.',
-    test_suite='tests.test_smaz'
+    test_suite='tests.test_smaz',
 )
