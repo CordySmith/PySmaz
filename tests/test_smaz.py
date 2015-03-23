@@ -14,8 +14,9 @@ import itertools
 import random
 import sys
 
-from lib.smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, make_trie, SMAZ_TREE, _worst_size, \
-    _encapsulate_list, compress_no_backtracking, compress_classic
+from smaz import compress, decompress, _encapsulate, DECODE, _check_ascii, \
+                 make_trie, SMAZ_TREE, _worst_size, _encapsulate_list, \
+                 compress_no_backtracking, compress_classic
 
 
 __author__ = "Max Smith"
