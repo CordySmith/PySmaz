@@ -12,10 +12,13 @@ the high setup cost per call to the entropy coders.
 
 SMAZ by Salvatore Sanfilippo, Python port by Max Smith.
 
-## Installation and Usage
+## Installation
 
 ```
 pip install pySmaz
+```
+
+## Usage
 
 ```python
 from smaz import compress, decompress
@@ -28,8 +31,8 @@ print decompress(compress("Salvatore"))
 
 ## Versions
 
-1.0.0 - original release (dict based tree structure)
-1.0.1 - throughput improvements approx 10%
+* 1.0.0 - original release (dict based tree structure)
+* 1.0.1 - throughput improvements approx 10%
 
 ## Background
 
