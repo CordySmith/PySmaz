@@ -767,7 +767,3 @@ class TestCorpusVsSmaz(TestSmazBase):
     def test_the_leeds_internet_corpus_english_urls(self):
         """ from http://corpus.leeds.ac.uk/internet.html, 40k urls """
         self.corpus_line_by_line('data/final-url-en.txt')
-
-
-
-
