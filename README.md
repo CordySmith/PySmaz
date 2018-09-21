@@ -49,7 +49,7 @@ The original C implementation used a table approach, along with some hashing to
 select the right entry. My first attempt used the original C-style approach and
 barely hit 170k/sec on CPython and a i7.
 
-The trie based approach gets closer to one megabyte per second on the same
+The tree based approach gets closer to one megabyte per second on the same
 setup. The difference is performance is largely due to the inner loop not
 always checking 7 characters per character - i.e. O(7n) vs O(n). I've tried to
 balance readability with performance, hopefully it's clear what's going on.
